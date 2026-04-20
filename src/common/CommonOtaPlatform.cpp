@@ -1,10 +1,26 @@
-#include "CommonOtaPlatform.h"
+// The MIT License (MIT)
+//
+// Copyright (c) 2024 Quarkifi Technologies Pvt Ltd
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
-#if defined(ESP32)
-    #include "mbedtls/base64.h"
-#elif defined(ESP8266)
-    #include "base64.h"
-#endif
+#include "CommonOtaPlatform.h"
 
 // ================== CommonOtaPlatform ==================
 
@@ -16,7 +32,7 @@ CommonOtaPlatform::CommonOtaPlatform()
       _lastProgressMs(0)
 {}
 
-void CommonOtaPlatform::setCallback(void (*callback)(const String &status)) {
+void CommonOtaPlatform::setCallback(void (*callback)(const byte status, const byte progress)) {
     _callback = callback;
 }
 
@@ -28,41 +44,10 @@ bool CommonOtaPlatform::isBusy() const {
     return _state == OtaState::DOWNLOADING || _state == OtaState::UPDATING;
 }
 
-void CommonOtaPlatform::publishStatus(const String &status) {
+void CommonOtaPlatform::publishStatus(byte status, byte progress) {
     if (_callback) {
-        _callback(status);
+        _callback(status, progress);
     }
-}
-
-String CommonOtaPlatform::buildBasicAuth(const String &username, const String &password) {
-    if (username.isEmpty() || password.isEmpty()) return "";
-
-    String credentials = username + ":" + password;
-
-#if defined(ESP32)
-    // ESP32: use mbedTLS
-    size_t outputLen = 0;
-    mbedtls_base64_encode(nullptr, 0, &outputLen,
-                          (const unsigned char *)credentials.c_str(),
-                          credentials.length());
-
-    unsigned char *encoded = new unsigned char[outputLen + 1];
-    mbedtls_base64_encode(encoded, outputLen + 1, &outputLen,
-                          (const unsigned char *)credentials.c_str(),
-                          credentials.length());
-    encoded[outputLen] = '\0';
-
-    String result = "Basic " + String((char *)encoded);
-    delete[] encoded;
-    return result;
-
-#elif defined(ESP8266)
-    // ESP8266: use built-in base64 helper
-    return "Basic " + base64::encode(credentials);
-
-#else
-    return "";
-#endif
 }
 
 void CommonOtaPlatform::reportProgress(size_t written, size_t total) {
@@ -70,9 +55,8 @@ void CommonOtaPlatform::reportProgress(size_t written, size_t total) {
 
     unsigned long now = millis();
     if (now - _lastProgressMs < 1000) return;
-
     _lastProgressMs = now;
 
-    int percent = (int)((written * 100UL) / total);
-    publishStatus("downloading: " + String(percent) + "%");
+    byte percent = (byte)((written * 100UL) / total);
+    publishStatus(OtaStatus::DOWNLOADING, percent);
 }

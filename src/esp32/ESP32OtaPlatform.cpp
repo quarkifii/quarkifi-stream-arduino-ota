@@ -1,46 +1,65 @@
+// The MIT License (MIT)
+//
+// Copyright (c) 2024 Quarkifi Technologies Pvt Ltd
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 #if defined(ESP32)
 
 #include "ESP32OtaPlatform.h"
 
 // ================== ESP32OtaPlatform ==================
 
-ESP32OtaPlatform::ESP32OtaPlatform() {}
-
-bool ESP32OtaPlatform::begin() {
+ESP32OtaPlatform::ESP32OtaPlatform() {
     _state = OtaState::IDLE;
-    return true;
 }
 
 bool ESP32OtaPlatform::startOTA(const String &url, const String &auth) {
     if (isBusy()) {
-        publishStatus("ignored: already updating");
+        publishStatus(OtaStatus::ERR_BUSY);
         return false;
     }
 
     if (WiFi.status() != WL_CONNECTED) {
-        publishStatus("failed: wifi not connected");
+        publishStatus(OtaStatus::ERR_NO_WIFI);
         return false;
     }
 
     for (int attempt = 1; attempt <= _maxRetries; attempt++) {
-        publishStatus("starting (try " + String(attempt) + ")");
+        publishStatus(OtaStatus::STARTING);
 
         if (performOTA(url, auth)) {
-            publishStatus("success");
+            publishStatus(OtaStatus::SUCCESS);
             delay(500);
-            publishStatus("restarting");
+            publishStatus(OtaStatus::RESTARTING);
             delay(1000);
             ESP.restart();
-            return true; // Unreachable, but satisfies the compiler
+            return true; // Unreachable, satisfies the compiler
         }
 
+        // _state is FAILED here; retry unless this was the last attempt
         if (attempt < _maxRetries) {
-            publishStatus("retrying...");
             delay(2000);
         }
     }
 
-    publishStatus("failed after retries");
+    publishStatus(OtaStatus::ERR_RETRIES);
     _state = OtaState::FAILED;
     return false;
 }
@@ -62,7 +81,12 @@ bool ESP32OtaPlatform::performOTA(const String &url, const String &auth) {
         : &plainClient;
 
     HTTPClient http;
-    http.begin(*clientPtr, url);
+    if (!http.begin(*clientPtr, url)) {
+        publishStatus(OtaStatus::ERR_HTTP);
+        _state = OtaState::FAILED;
+        return false;
+    }
+
     http.setTimeout(60000);
     http.addHeader("Accept-Encoding", "identity");
 
@@ -73,7 +97,7 @@ bool ESP32OtaPlatform::performOTA(const String &url, const String &auth) {
     int httpCode = http.GET();
 
     if (httpCode != HTTP_CODE_OK) {
-        publishStatus("failed: http " + String(httpCode));
+        publishStatus(OtaStatus::ERR_HTTP);
         http.end();
         _state = OtaState::FAILED;
         return false;
@@ -82,25 +106,26 @@ bool ESP32OtaPlatform::performOTA(const String &url, const String &auth) {
     int contentLength = http.getSize();
 
     if (contentLength <= 0) {
-        publishStatus("failed: invalid content length");
+        publishStatus(OtaStatus::ERR_HTTP);
         http.end();
         _state = OtaState::FAILED;
         return false;
     }
 
     if (!Update.begin(contentLength)) {
-        publishStatus("failed: not enough space");
+        publishStatus(OtaStatus::ERR_NO_SPACE);
         http.end();
         _state = OtaState::FAILED;
         return false;
     }
 
     _state = OtaState::UPDATING;
+    publishStatus(OtaStatus::INSTALLING);
 
-    WiFiClient *stream    = http.getStreamPtr();
-    uint8_t     buff[1024];
-    size_t      written       = 0;
-    uint32_t    lastDataMs    = millis();
+    WiFiClient *stream     = http.getStreamPtr();
+    uint8_t     buff[BUFFER_SIZE];
+    size_t      written    = 0;
+    uint32_t    lastDataMs = millis();
 
     while (http.connected() && written < (size_t)contentLength) {
         size_t available = stream->available();
@@ -108,10 +133,11 @@ bool ESP32OtaPlatform::performOTA(const String &url, const String &auth) {
         if (available > 0) {
             lastDataMs = millis();
 
-            int readBytes = stream->readBytes(buff, min(available, sizeof(buff)));
+            size_t toRead  = (available < sizeof(buff)) ? available : sizeof(buff);
+            int readBytes  = stream->readBytes(buff, toRead);
 
-            if (Update.write(buff, readBytes) != (size_t)readBytes) {
-                publishStatus("failed: write error");
+            if (readBytes <= 0 || Update.write(buff, readBytes) != (size_t)readBytes) {
+                publishStatus(OtaStatus::ERR_WRITE);
                 Update.end();
                 http.end();
                 _state = OtaState::FAILED;
@@ -122,7 +148,7 @@ bool ESP32OtaPlatform::performOTA(const String &url, const String &auth) {
             reportProgress(written, contentLength);
         } else {
             if (millis() - lastDataMs > (uint32_t)_timeoutMs) {
-                publishStatus("failed: timeout");
+                publishStatus(OtaStatus::ERR_TIMEOUT);
                 Update.end();
                 http.end();
                 _state = OtaState::FAILED;
@@ -134,14 +160,8 @@ bool ESP32OtaPlatform::performOTA(const String &url, const String &auth) {
 
     http.end();
 
-    if (!Update.end()) {
-        publishStatus("failed: finalize error");
-        _state = OtaState::FAILED;
-        return false;
-    }
-
-    if (!Update.isFinished()) {
-        publishStatus("failed: incomplete");
+    if (!Update.end() || !Update.isFinished()) {
+        publishStatus(OtaStatus::ERR_FINALIZE);
         _state = OtaState::FAILED;
         return false;
     }
