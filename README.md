@@ -29,7 +29,7 @@ API and usage details can be found [here](/API.md)
 ### Using Git
 ``` 
 cd ~/Documents/Arduino/libraries/ 
-git clone https://github.com/quarkifii/quarkifi-stream-arduino-ota.git
+git clone https://github.com/quarkifii/quarkifi-stream-arduino-ota.git QuarkifiStreamOTA
 ``` 
 ## API and CLI
 
