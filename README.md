@@ -1,7 +1,7 @@
 
 
 
-# Quarkifi Stream Arduino OTA
+# Quarkifi Stream OTA
 ## OTA Library for Arduino Based Boards
 ### Use seamlesly with Quarkifi Stream Platform
 An [Arduino](https://arduino.cc/) library for managing OTA software updates.     
@@ -22,7 +22,7 @@ API and usage details can be found [here](/API.md)
 ### Using the Arduino IDE Library Manager
 
 1. Choose `Sketch` -> `Include Library` -> `Manage Libraries...`
-2. Type `Quarkifi Stream Arduino OTA` into the search box.
+2. Type `QuarkifiStreamOTA` into the search box.
 3. Click the row to select the library.
 4. Click the `Install` button to install the library.
 
