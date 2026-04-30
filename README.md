@@ -4,7 +4,7 @@
 # Quarkifi Stream Arduino OTA
 ## OTA Library for Arduino Based Boards
 ### Use seamlesly with Quarkifi Stream Platform
-An [Arduino](https://arduino.cc/) library for managingOTA software updates.     
+An [Arduino](https://arduino.cc/) library for managing OTA software updates.     
 Demonstrates Quarkifi Stream Arduino OTA integrated with MQTT on ESP based boards.
 This demo program can be used to integrate with Quarkifi Stream Platform 
 (https://qstream.quarkifi.com) or any other OTA supported platform as well  
