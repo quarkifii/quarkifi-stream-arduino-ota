@@ -43,10 +43,10 @@
 // See interfaces/OtaStatus.h for the full list of status codes.
 // =======================================================
 
-class QstreamArduinoOta {
+class QuarkifiStreamArduinoOTA {
 public:
-    QstreamArduinoOta();
-    ~QstreamArduinoOta();
+    QuarkifiStreamArduinoOTA();
+    ~QuarkifiStreamArduinoOTA();
 
     // Register a status callback.
     //   status   — OtaStatus:: lifecycle or error code

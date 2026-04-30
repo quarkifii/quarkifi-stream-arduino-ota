@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include "QstreamArduinoOta.h"
+#include "QuarkifiStreamArduinoOTA.h"
 
 #if defined(ESP32)
     #include "mbedtls/base64.h"
@@ -34,12 +34,12 @@
 #elif defined(ESP8266)
     #include "esp8266/ESP8266OtaPlatform.h"
 #else
-    #error "QstreamArduinoOta: Unsupported platform. Only ESP32 and ESP8266 are supported."
+    #error "QuarkifiStreamArduinoOTA: Unsupported platform. Only ESP32 and ESP8266 are supported."
 #endif
 
-// ================== QstreamArduinoOta ==================
+// ================== QuarkifiStreamArduinoOTA ==================
 
-QstreamArduinoOta::QstreamArduinoOta() {
+QuarkifiStreamArduinoOTA::QuarkifiStreamArduinoOTA() {
 #if defined(ESP32)
     _platform = new ESP32OtaPlatform();
 #elif defined(ESP8266)
@@ -49,22 +49,22 @@ QstreamArduinoOta::QstreamArduinoOta() {
 #endif
 }
 
-QstreamArduinoOta::~QstreamArduinoOta() {
+QuarkifiStreamArduinoOTA::~QuarkifiStreamArduinoOTA() {
     delete _platform;
 }
 
-void QstreamArduinoOta::setCallback(void (*callback)(const byte status, const byte progress)) {
+void QuarkifiStreamArduinoOTA::setCallback(void (*callback)(const byte status, const byte progress)) {
     if (_platform) {
         _platform->setCallback(callback);
     }
 }
 
-bool QstreamArduinoOta::startOTA(const String &url, const String &auth) {
+bool QuarkifiStreamArduinoOTA::startOTA(const String &url, const String &auth) {
     if (!_platform) return false;
     return _platform->startOTA(url, auth);
 }
 
-String QstreamArduinoOta::buildAuth(const String &username, const String &password) {
+String QuarkifiStreamArduinoOTA::buildAuth(const String &username, const String &password) {
     if (username.isEmpty() || password.isEmpty()) return "";
 
     String credentials = username + ":" + password;

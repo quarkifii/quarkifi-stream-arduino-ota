@@ -23,8 +23,11 @@
 // ============================================================
 // ESP32_MQTT_OTA Example
 // ============================================================
-// Demonstrates QstreamArduinoOta integrated with MQTT on ESP32.
+// Demonstrates Quarkifi Stream Arduino OTA integrated with MQTT on ESP32.
+// This demo program can be used to integrate with Quarkifi Stream Platform 
+// (https://qstream.quarkifi.com) or any other as well
 //
+// If you are not using Quarkifi Stream Platform make sure you adjust below parameters
 // Receives a downstream MQTT message:
 //   {
 //     "ota_url__":       "https://example.com/firmware.bin",
@@ -32,7 +35,7 @@
 //     "auth_password__": "pass"    // optional
 //   }
 //
-// Publishes OTA status back upstream:
+// This Library Publishes OTA status back on upstream topic:
 //   { "ota_status": <code>, "ota_progress": <0-100> }
 //
 // OtaStatus code reference:
@@ -53,16 +56,20 @@
 
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
-#include <QstreamArduinoOta.h>
+#include <QuarkifiStreamArduinoOTA.h>
 
 // ================== CONFIG ==================
 const char* WIFI_SSID = "YOUR_SSID";
 const char* WIFI_PASSWORD = "YOUR_PASSWORD";
 
-// Primary broker: mqtt.qconsole.quarkifi.com
-// Also compatible with: stream.quarkifi.com
+// MQTT broker: mqtt.qconsole.quarkifi.com
+// Replace with any other broker if you are not using Quarkifi Stream platform
+// Above broker makes seamless OTA . Learn more at -> https://qstream.quarkifi.com
 // Port 1883 — Unsecured | Port 8883 — TLS-Secured
+// Once device is created the below credentials can be retrieved from Quarkifi Stream Platform
+
 const char* MQTT_HOST = "mqtt.qconsole.quarkifi.com";
 const int   MQTT_PORT = 1883;
 const char* MQTT_USER = "your-mqtt-user";
@@ -71,15 +78,13 @@ const char* MQTT_PASS = "your-mqtt-pass";
 const char* TOPIC_PUB = "your-mqtt-user/your-device-id/upstream";
 const char* TOPIC_SUB = "your-mqtt-user/your-device-id/downstream";
 
-const int PUBLISH_INTERVAL = 10000;
-const int LED_PIN          = 2;
-
 // ================== GLOBALS ==================
+// Use below if using secured(TLS) MQTT - 8883 
+WiFiClientSecure        espClientSecure;
+// Use below if using unsecured MQTT - 1883
 WiFiClient        espClient;
-PubSubClient      mqttClient(espClient);
-QstreamArduinoOta ota;
-
-unsigned long lastPublish = 0;
+PubSubClient      *mqttClient;
+QuarkifiStreamArduinoOTA ota;
 
 // ================== OTA STATUS CALLBACK ==================
 // Registered right before startOTA() — not in setup().
@@ -98,13 +103,14 @@ void onOtaStatus(const byte status, const byte progress) {
         Serial.println("Error on OTA: " + String(status));
     }
 
+    // DO NOT CHANGE Below structure if using Quarkifi Stream Platfrom (https://qstream.quarkifi.com)
     JsonDocument doc;
-    doc["ota_status"]   = status;
-    doc["ota_progress"] = progress;      // 0–100; only meaningful when status == 1 (DOWNLOADING)
+    doc["ota_status__"]   = status;
+    doc["ota_progress__"] = progress;      // 0–100; only meaningful when status == 1 (DOWNLOADING)
 
     char buffer[64];
     serializeJson(doc, buffer);
-    mqttClient.publish(TOPIC_PUB, buffer);
+    mqttClient->publish(TOPIC_PUB, buffer);
 }
 
 // ================== START OTA ==================
@@ -132,34 +138,20 @@ void connectWiFi() {
 
 // ================== MQTT ==================
 void connectMQTT() {
-    while (!mqttClient.connected()) {
+    while (!mqttClient->connected()) {
         Serial.print("Connecting MQTT...");
 
         String clientId = "ESP32-" + String(random(0xffff), HEX);
 
-        if (mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
+        if (mqttClient->connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
             Serial.println("connected");
-            mqttClient.subscribe(TOPIC_SUB);
+            mqttClient->subscribe(TOPIC_SUB);
         } else {
             Serial.print("failed rc=");
-            Serial.println(mqttClient.state());
+            Serial.println(mqttClient->state());
             delay(3000);
         }
     }
-}
-
-// ================== PUBLISH ==================
-void publishData() {
-    JsonDocument doc;                    // ArduinoJson v7 — no size template needed
-    doc["temperature"] = random(20, 40);
-    doc["humidity"]    = random(30, 80);
-    doc["light"]       = random(0, 1000);
-    doc["pressure"]    = random(900, 1100);
-
-    char buffer[256];
-    serializeJson(doc, buffer);
-    mqttClient.publish(TOPIC_PUB, buffer);
-    Serial.println("Published: " + String(buffer));
 }
 
 // ================== MQTT CALLBACK ==================
@@ -175,6 +167,13 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if (deserializeJson(doc, message) != DeserializationError::Ok) return;
 
     // ---- OTA trigger ----
+    // Below arguments are fixed with Quarkifi Stream Platform 
+    // DO NOT Change below params if using Quarkifi Stream
+    //
+    // OTA_URL -> firmware binary http path url. e.g https://xxxxxxx 
+    // OTA_USER -> URL http basic auth username
+    // OTA_PASSWORD -> URL http basic auth password
+
     if (doc["ota_url__"].is<const char*>()) {
         String url  = doc["ota_url__"].as<String>();
         String user = doc["auth_username__"] | "";
@@ -184,39 +183,35 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         return;
     }
 
-    // ---- Normal control message ----
-    int sw = doc["switch"] | 0;
-    digitalWrite(LED_PIN, sw == 1 ? HIGH : LOW);
 }
 
 // ================== SETUP ==================
 void setup() {
     Serial.begin(115200);
 
-    pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, LOW);
-
     connectWiFi();
-
+    if(MQTT_PORT == 1883) {
+        mqttClient =  new PubSubClient(espClient);
+    }else if (MQTT_PORT == 8883) {
+        // If needed to avoid below setInsecure, replace this with latest CA root chain of mqtt host
+        // setInsecure uses secured TLS transport but can allow man in the middle attack
+        espClientSecure.setInsecure();
+        mqttClient =  new PubSubClient(espClientSecure);
+    }
+    
     // Initialize MQTT
-    mqttClient.setServer(MQTT_HOST, MQTT_PORT);
-    mqttClient.setCallback(mqttCallback);
-    mqttClient.setBufferSize(1024);
+    mqttClient->setServer(MQTT_HOST, MQTT_PORT);
+    mqttClient->setCallback(mqttCallback);
+    mqttClient->setBufferSize(1024);
 
     randomSeed(esp_random());
 }
 
 // ================== LOOP ==================
 void loop() {
-    if (!mqttClient.connected()) {
+    if (!mqttClient->connected()) {
         connectMQTT();
     }
 
-    mqttClient.loop();
-
-    unsigned long now = millis();
-    if (now - lastPublish > PUBLISH_INTERVAL) {
-        lastPublish = now;
-        publishData();
-    }
+    mqttClient->loop();
 }

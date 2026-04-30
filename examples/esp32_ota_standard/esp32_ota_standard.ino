@@ -21,9 +21,12 @@
 // SOFTWARE.
 
 // ============================================================
-// Simple_OTA Example | Supports both ESP32 and ESP8266
+// Simple_OTA Example
 // ============================================================
-// Triggers an OTA update once, 60 seconds after boot.
+// Demonstrates Quarkifi Stream Arduino OTA integrated with MQTT on ESP32.
+// This demo program can be used to integrate with Quarkifi Stream Platform 
+// (https://qstream.quarkifi.com) or any other OTA ready platform
+// To triggers an OTA update once set otaReady = true
 // Status is printed to Serial using OtaStatus codes.
 //
 // OtaStatus code reference:
@@ -43,14 +46,9 @@
 // ============================================================
 
 #include <Arduino.h>
+#include <WiFi.h>
 
-#if defined(ESP32)
-    #include <WiFi.h>
-#elif defined(ESP8266)
-    #include <ESP8266WiFi.h>
-#endif
-
-#include <QstreamArduinoOta.h>
+#include <QuarkifiStreamArduinoOTA.h>
 
 // ================== CONFIG ==================
 const char* WIFI_SSID     = "YOUR_SSID";
@@ -61,11 +59,17 @@ const char* OTA_USER      = "OTA_USERNAME";   // leave blank if no auth
 const char* OTA_PASSWORD  = "OTA_PASSWORD";   // leave blank if no auth
 
 // ================== GLOBALS ==================
-QstreamArduinoOta ota;
+QuarkifiStreamArduinoOTA ota;
 
+// OTA Control boolean.
+// Turn true to fire OTA
+bool otaReady = false;
+
+// Runtime
 unsigned long startTime  = 0;
 bool          otaFired   = false;
 byte          countdown  = 60;
+
 
 // ================== OTA STATUS CALLBACK ==================
 // Called by the library whenever OTA state changes.
@@ -138,31 +142,28 @@ void connectWiFi() {
 void setup() {
     Serial.begin(115200);
     delay(1000);
-
     connectWiFi();
 
-    startTime = millis();
-    Serial.println("OTA will trigger in 60 seconds...");
 }
 
 // ================== LOOP ==================
+
 void loop() {
 
-    // Countdown display
-    if (!otaFired && countdown > 0) {
-        Serial.println(countdown);
-        countdown--;
-        delay(1000);
-    }
-
     // Fire OTA once after 60 seconds
-    if (!otaFired && millis() - startTime >= 60000) {
+    if (!otaFired && otaReady) {
         otaFired = true;
 
         Serial.println("\nTriggering OTA...");
 
         // Register callback and trigger — no need to call begin()
         ota.setCallback(onOtaStatus);
+        // Below parameters can be managed using Quarkifi Stream Platform
+        // MQTT is a preferred way of receiving these parameters 
+        // However other means can also be used
+        // OTA_URL -> firmware binary http path url. e.g https://xxxxxxx 
+        // OTA_USER -> URL http basic auth username
+        // OTA_PASSWORD -> URL http basic auth password
 
         String auth   = ota.buildAuth(OTA_USER, OTA_PASSWORD);
         bool   result = ota.startOTA(OTA_URL, auth);
@@ -171,4 +172,5 @@ void loop() {
             Serial.println("OTA failed to start.");
         }
     }
+    delay(100);
 }
