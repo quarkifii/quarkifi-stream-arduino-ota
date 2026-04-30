@@ -2,12 +2,12 @@
 
 
 
-# Quarkifi Stream Arduino OTA Usage Details
+# Quarkifi Stream OTA Usage Details
 
 ## Include Library
 
 ```arduino 
-#include <QuarkifiStreamArduinoOTA.h>
+#include <QuarkifiStreamOTA.h>
 ```   
 ## Setup
 Make sure Arduino IDE is setup with ESP8266/ESP32 development configurations
