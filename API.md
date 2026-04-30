@@ -2,7 +2,7 @@
 
 
 
-# QuarkDB API and Command Line Details
+# Quarkifi Stream Arduino OTA Usage Details
 
 ## Include Library
 
