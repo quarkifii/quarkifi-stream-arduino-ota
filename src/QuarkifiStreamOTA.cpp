@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include "QuarkifiStreamArduinoOTA.h"
+#include "QuarkifiStreamOTA.h"
 
 #if defined(ESP32)
     #include "mbedtls/base64.h"

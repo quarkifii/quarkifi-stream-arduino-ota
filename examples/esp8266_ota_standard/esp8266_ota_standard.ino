@@ -48,7 +48,7 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 
-#include <QuarkifiStreamArduinoOTA.h>
+#include <QuarkifiStreamOTA.h>
 
 // ================== CONFIG ==================
 const char* WIFI_SSID     = "YOUR_SSID";

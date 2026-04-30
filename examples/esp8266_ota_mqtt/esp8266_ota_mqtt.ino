@@ -58,7 +58,7 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
-#include <QuarkifiStreamArduinoOTA.h>
+#include <QuarkifiStreamOTA.h>
 
 // ================== CONFIG ==================
 const char* WIFI_SSID = "YOUR_SSID";
