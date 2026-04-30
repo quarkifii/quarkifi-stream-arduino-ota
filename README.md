@@ -1,11 +1,13 @@
 
 
 
-# QuarkDB
-## NoSQL Database for Arduino Based Boards
-### Use API or CLI like any DB
-An [Arduino](https://arduino.cc/) library for managing data just like any other NoSQL DB.     
-Data managed using ArduinoJson and SPIFFS file system for ESP boards.    
+# Quarkifi Stream Arduino OTA
+## OTA Library for Arduino Based Boards
+### Use seamlesly with Quarkifi Stream Platform
+An [Arduino](https://arduino.cc/) library for managingOTA software updates.     
+Demonstrates Quarkifi Stream Arduino OTA integrated with MQTT on ESP based boards.
+This demo program can be used to integrate with Quarkifi Stream Platform 
+(https://qstream.quarkifi.com) or any other OTA supported platform as well  
 API and usage details can be found [here](/API.md)
 
 
@@ -20,18 +22,18 @@ API and usage details can be found [here](/API.md)
 ### Using the Arduino IDE Library Manager
 
 1. Choose `Sketch` -> `Include Library` -> `Manage Libraries...`
-2. Type `QuarkDB` into the search box.
+2. Type `Quarkifi Stream Arduino OTA` into the search box.
 3. Click the row to select the library.
 4. Click the `Install` button to install the library.
 
 ### Using Git
 ``` 
 cd ~/Documents/Arduino/libraries/ 
-git clone https://github.com/quarkifii/quark-db-arduino QuarkDB 
+git clone https://github.com/quarkifii/quarkifi-stream-arduino-ota.git
 ``` 
 ## API and CLI
 
-See [API and CLI commands](/API.md).
+See [API ](/API.md).
 
 ## Examples
 
@@ -39,7 +41,7 @@ See [examples](examples) folder.
 
 ## More Information
 
-More information of Quarkifi DB can be found [here](https://qstream.quarkifi.com/quarkdb/).
+More information of Quarkifi Streamplatform can be found [here](https://qstream.quarkifi.com/).
 
 For any issue please reach out to support@quarkifi.com or raise an issue.
 
