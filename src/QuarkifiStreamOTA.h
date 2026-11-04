@@ -26,27 +26,34 @@
 #include "interfaces/IOtaPlatform.h"
 #include "interfaces/OtaStatus.h"
 
-// ================== QstreamArduinoOta ==================
+// ================== QuarkifiStreamArduinoOTA ==================
 //
 // Public facade for OTA firmware updates on ESP32 / ESP8266.
 //
 // Usage:
-//   QstreamArduinoOta ota;
+//   QuarkifiStreamArduinoOTA ota;
 //
-//   // In your OTA trigger handler — register callback then fire:
+//   ota.setRootCA(ROOT_CA_PEM);          // recommended: verify the server
 //   ota.setCallback([](const byte status, const byte progress) {
 //       // status  : one of the OtaStatus:: constants
 //       // progress: 0–100, only valid when status == OtaStatus::DOWNLOADING
 //   });
-//   ota.startOTA("https://example.com/firmware.bin", auth);
+//   ota.startOTA("https://example.com/firmware.bin", auth, md5);
+//
+// startOTA() is BLOCKING: it returns false on failure; on success the
+// device restarts and it never returns.
 //
 // See interfaces/OtaStatus.h for the full list of status codes.
-// =======================================================
+// ===============================================================
 
 class QuarkifiStreamArduinoOTA {
 public:
     QuarkifiStreamArduinoOTA();
     ~QuarkifiStreamArduinoOTA();
+
+    // Owns a platform object — copying would double-free it.
+    QuarkifiStreamArduinoOTA(const QuarkifiStreamArduinoOTA &) = delete;
+    QuarkifiStreamArduinoOTA &operator=(const QuarkifiStreamArduinoOTA &) = delete;
 
     // Register a status callback.
     //   status   — OtaStatus:: lifecycle or error code
@@ -54,13 +61,22 @@ public:
     // Call this before startOTA(). Safe to call multiple times.
     void setCallback(void (*callback)(const byte status, const byte progress));
 
-    // Trigger an OTA update from the given URL with an optional Basic Auth header.
-    // auth should be the full header value, e.g. "Basic dXNlcjpwYXNz"
-    // Use ota.buildAuth(user, pass) to generate it.
-    bool startOTA(const String &url, const String &auth = "");
+    // Verify the HTTPS server against this root CA certificate (PEM).
+    // The PEM is copied. Pass nullptr or "" to go back to unverified TLS.
+    // While a root CA is set, plain http:// URLs are rejected (ERR_BAD_ARGS).
+    // No NTP/clock is required (see ESP8266OtaPlatform.h for how).
+    void setRootCA(const char *rootCaPem);
+
+    // Trigger an OTA update from the given URL.
+    //   auth — optional full Authorization header value, e.g. "Basic dXNlcjpwYXNz"
+    //          (use buildAuth(user, pass) to generate it)
+    //   md5  — optional expected MD5 of the firmware (32 hex chars). The image
+    //          is not committed if it doesn't match. For tamper protection,
+    //          deliver it over a trusted channel (e.g. MQTT over TLS).
+    bool startOTA(const String &url, const String &auth = "", const String &md5 = "");
 
     // Encode username + password into a Basic Auth header value.
-    // Returns empty string if either argument is empty.
+    // Returns empty string if username is empty. An empty password is allowed.
     static String buildAuth(const String &username, const String &password);
 
 private:

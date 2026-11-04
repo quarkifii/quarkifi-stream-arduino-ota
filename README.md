@@ -39,6 +39,18 @@ See [API ](/API.md).
 
 See [examples](examples) folder.
 
+## Tests
+
+Host-side unit tests (no board needed) use Arduino/ESP mocks. With only Docker installed:
+
+```
+./test/run-tests.sh --all
+```
+
+Or natively with `g++` and `make`: `make -C test`.
+
+See [test/README.md](test/README.md).
+
 ## More Information
 
 More information of Quarkifi Streamplatform can be found [here](https://qstream.quarkifi.com/).

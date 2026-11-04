@@ -31,30 +31,44 @@
 //   void onOtaStatus(const byte status, const byte progress)
 //
 // `progress` is only meaningful when status == OtaStatus::DOWNLOADING.
-//   0   = not yet started
-//   1–99 = in progress
-//   100 = download complete
+//   0      = download started (always reported first)
+//   1–99   = in progress (throttled to at most once per second)
+//   100    = download complete (always reported last)
 //
 // For all other status codes, progress is always 0.
 //
-// -----------------------------------------------
-// Code  | Constant        | Meaning
-// -----------------------------------------------
-//   0   | STARTING        | OTA attempt is beginning (one per retry)
-//   1   | DOWNLOADING     | Firmware download in progress; see progress
-//   2   | INSTALLING      | Writing firmware to flash
-//   3   | SUCCESS         | Firmware written and verified successfully
-//   4   | RESTARTING      | Device is about to restart with new firmware
-// -----------------------------------------------
-//  10   | ERR_BUSY        | OTA already in progress; request ignored
-//  11   | ERR_NO_WIFI     | Wi-Fi not connected; cannot start OTA
-//  12   | ERR_HTTP        | HTTP request failed (non-200 response)
-//  13   | ERR_NO_SPACE    | Not enough flash space for the firmware
-//  14   | ERR_WRITE       | Flash write error during update
-//  15   | ERR_TIMEOUT     | No data received within the timeout window
-//  16   | ERR_FINALIZE    | Update.end() failed; firmware not committed
-//  17   | ERR_RETRIES     | All retry attempts exhausted; OTA abandoned
-// -----------------------------------------------
+// Successful update order:
+//   STARTING -> DOWNLOADING(0..100) -> INSTALLING -> SUCCESS -> RESTARTING
+//
+// Errors marked (R) are retried (up to 3 attempts, 2 s apart); when every
+// attempt fails ERR_RETRIES is sent last. Errors marked (P) are permanent:
+// startOTA() stops immediately and that error is the final status.
+//
+// -----------------------------------------------------------------
+//  Code | Constant      | Meaning
+// -----------------------------------------------------------------
+//   0   | STARTING      | OTA attempt is beginning (one per retry)
+//   1   | DOWNLOADING   | Firmware download in progress; see progress
+//   2   | INSTALLING    | Download complete; verifying and committing
+//   3   | SUCCESS       | Firmware written and verified successfully
+//   4   | RESTARTING    | Device is about to restart with new firmware
+// -----------------------------------------------------------------
+//  10   | ERR_BUSY      | (P) OTA already in progress; request ignored
+//  11   | ERR_NO_WIFI   | (P) Wi-Fi not connected; cannot start OTA
+//  12   | ERR_HTTP      | (R) connection/TLS failure, 5xx, 408, 429 or
+//       |               |     connection lost mid-download
+//       |               | (P) invalid URL, other 3xx/4xx, or no
+//       |               |     Content-Length
+//  13   | ERR_NO_SPACE  | (P) Not enough flash space for the firmware
+//  14   | ERR_WRITE     | (R) Flash write error during update
+//  15   | ERR_TIMEOUT   | (R) No data received within the timeout window
+//  16   | ERR_FINALIZE  | (R) Verification/commit failed (incl. MD5 mismatch)
+//  17   | ERR_RETRIES   | All retry attempts exhausted; OTA abandoned
+//  18   | ERR_NO_TIME   | (R) ESP8266 + root CA: clock not set and the
+//       |               |     server sent no usable Date header
+//  19   | ERR_BAD_ARGS  | (P) Invalid URL / MD5 / root CA, or http:// URL
+//       |               |     used while a root CA is configured
+// -----------------------------------------------------------------
 
 namespace OtaStatus {
     // ---- Lifecycle ----
@@ -73,4 +87,6 @@ namespace OtaStatus {
     const byte ERR_TIMEOUT = 15;
     const byte ERR_FINALIZE= 16;
     const byte ERR_RETRIES = 17;
+    const byte ERR_NO_TIME = 18;
+    const byte ERR_BAD_ARGS= 19;
 }

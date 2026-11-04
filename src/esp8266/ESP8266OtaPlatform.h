@@ -24,27 +24,43 @@
 
 #if defined(ESP8266)
 
-#include <ESP8266WiFi.h>
-#include <ESP8266HTTPClient.h>
-#include <WiFiClientSecure.h>
-#include <Updater.h>
 #include "../common/CommonOtaPlatform.h"
 
 // ================== ESP8266OtaPlatform ==================
 // ESP8266 concrete OTA implementation.
-// Uses: ESP8266WiFi, ESP8266HTTPClient, WiFiClientSecure, Updater
+// TLS: BearSSL via WiFiClientSecure. With a root CA set, the server chain and
+// hostname are verified. BearSSL also checks certificate dates, so a time is
+// required — no NTP dependency is added:
+//   - if the system clock is already set (e.g. the sketch ran configTime()),
+//     it is used;
+//   - otherwise a HEAD request is made to the OTA host and its HTTP `Date`
+//     header is used. A forged Date can only defeat the expiry check; the
+//     chain and hostname are still verified against the root CA.
 // ============================================================
 
 class ESP8266OtaPlatform : public CommonOtaPlatform {
 public:
-    ESP8266OtaPlatform();
-    ~ESP8266OtaPlatform() {}
+    // Any epoch below this (2024-01-01) is treated as "clock not set".
+    static const uint32_t MIN_VALID_EPOCH = 1704067200UL;
 
-    bool startOTA(const String &url, const String &auth) override;
+    ESP8266OtaPlatform();
+    ~ESP8266OtaPlatform();
+
+protected:
+    Attempt configureTls(WiFiClientSecure &client, const String &url) override;
+    bool    finalizeUpdate() override;
+    void    restartDevice() override;
+    void    onRootCAChanged() override;
+
+    // Current system time (UTC epoch). Virtual for testing.
+    virtual uint32_t systemEpoch();
+
+    // HEAD the URL over an unverified connection and parse its Date header.
+    // Returns 0 when unavailable.
+    uint32_t fetchServerTime(const String &url);
 
 private:
-    // Execute one OTA attempt. Returns true on success.
-    bool performOTA(const String &url, const String &auth);
+    BearSSL::X509List *_trustAnchors;
 };
 
 #endif // ESP8266

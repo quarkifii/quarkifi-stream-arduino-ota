@@ -59,13 +59,19 @@ void QuarkifiStreamArduinoOTA::setCallback(void (*callback)(const byte status, c
     }
 }
 
-bool QuarkifiStreamArduinoOTA::startOTA(const String &url, const String &auth) {
+void QuarkifiStreamArduinoOTA::setRootCA(const char *rootCaPem) {
+    if (_platform) {
+        _platform->setRootCA(rootCaPem);
+    }
+}
+
+bool QuarkifiStreamArduinoOTA::startOTA(const String &url, const String &auth, const String &md5) {
     if (!_platform) return false;
-    return _platform->startOTA(url, auth);
+    return _platform->startOTA(url, auth, md5);
 }
 
 String QuarkifiStreamArduinoOTA::buildAuth(const String &username, const String &password) {
-    if (username.isEmpty() || password.isEmpty()) return "";
+    if (username.isEmpty()) return "";
 
     String credentials = username + ":" + password;
 
@@ -75,16 +81,19 @@ String QuarkifiStreamArduinoOTA::buildAuth(const String &username, const String 
                           (const unsigned char *)credentials.c_str(),
                           credentials.length());
     unsigned char *encoded = new unsigned char[outputLen + 1];
-    mbedtls_base64_encode(encoded, outputLen + 1, &outputLen,
-                          (const unsigned char *)credentials.c_str(),
-                          credentials.length());
+    if (mbedtls_base64_encode(encoded, outputLen + 1, &outputLen,
+                              (const unsigned char *)credentials.c_str(),
+                              credentials.length()) != 0) {
+        delete[] encoded;
+        return "";
+    }
     encoded[outputLen] = '\0';
     String result = "Basic " + String((char *)encoded);
     delete[] encoded;
     return result;
 
 #elif defined(ESP8266)
-    return "Basic " + base64::encode(credentials);
+    return "Basic " + base64::encode(credentials, false);   // no line wrapping (older cores default to true)
 
 #else
     return "";

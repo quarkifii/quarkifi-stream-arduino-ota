@@ -23,148 +23,84 @@
 #if defined(ESP8266)
 
 #include "ESP8266OtaPlatform.h"
+#include "../common/HttpDate.h"
+
+#include <time.h>
 
 // ================== ESP8266OtaPlatform ==================
 
-ESP8266OtaPlatform::ESP8266OtaPlatform() {
-    _state = OtaState::IDLE;
+ESP8266OtaPlatform::ESP8266OtaPlatform() : _trustAnchors(nullptr) {}
+
+ESP8266OtaPlatform::~ESP8266OtaPlatform() {
+    delete _trustAnchors;
 }
 
-bool ESP8266OtaPlatform::startOTA(const String &url, const String &auth) {
-    if (isBusy()) {
-        publishStatus(OtaStatus::ERR_BUSY);
-        return false;
-    }
-
-    if (WiFi.status() != WL_CONNECTED) {
-        publishStatus(OtaStatus::ERR_NO_WIFI);
-        return false;
-    }
-
-    for (int attempt = 1; attempt <= _maxRetries; attempt++) {
-        publishStatus(OtaStatus::STARTING);
-
-        if (performOTA(url, auth)) {
-            publishStatus(OtaStatus::SUCCESS);
-            delay(500);
-            publishStatus(OtaStatus::RESTARTING);
-            delay(500);
-
-            WiFi.disconnect(true);
-            delay(200);
-
-            ESP.restart();
-            delay(2000);
-            ESP.reset();
-            return true; // Unreachable, satisfies the compiler
-        }
-
-        // _state is FAILED here; retry unless this was the last attempt
-        if (attempt < _maxRetries) {
-            delay(2000);
-        }
-    }
-
-    publishStatus(OtaStatus::ERR_RETRIES);
-    _state = OtaState::FAILED;
-    return false;
+void ESP8266OtaPlatform::onRootCAChanged() {
+    delete _trustAnchors;
+    _trustAnchors = _rootCA.isEmpty() ? nullptr : new BearSSL::X509List(_rootCA.c_str());
 }
 
-bool ESP8266OtaPlatform::performOTA(const String &url, const String &auth) {
-    _state = OtaState::DOWNLOADING;
+uint32_t ESP8266OtaPlatform::systemEpoch() {
+    return (uint32_t)time(nullptr);
+}
 
-    WiFiClientSecure secureClient;
-    secureClient.setInsecure(); // Accept any certificate
+uint32_t ESP8266OtaPlatform::fetchServerTime(const String &url) {
+    WiFiClientSecure probe;
+    probe.setInsecure();   // only the Date header is trusted, and only for the expiry check
 
     HTTPClient http;
-    if (!http.begin(secureClient, url)) {
-        publishStatus(OtaStatus::ERR_HTTP);
-        _state = OtaState::FAILED;
-        return false;
+    if (!http.begin(probe, url)) return 0;
+
+    const char *keys[] = {"Date"};
+    http.collectHeaders(keys, 1);
+    http.setTimeout(10000);
+
+    uint32_t epoch = 0;
+    int code = http.sendRequest("HEAD");
+    if (code > 0) {                       // any status: 4xx responses carry Date too
+        HttpDate::parse(http.header("Date"), epoch);
+    }
+    http.end();
+    return epoch;
+}
+
+CommonOtaPlatform::Attempt ESP8266OtaPlatform::configureTls(WiFiClientSecure &client, const String &url) {
+    if (_rootCA.isEmpty()) {
+        client.setInsecure();             // Legacy: accept any certificate
+        return Attempt::OK;
     }
 
-    http.setTimeout(60000);
-    http.addHeader("Accept-Encoding", "identity");
-
-    if (!auth.isEmpty()) {
-        http.addHeader("Authorization", auth);
+    if (!_trustAnchors || _trustAnchors->getCount() == 0) {
+        publishStatus(OtaStatus::ERR_BAD_ARGS);   // PEM could not be parsed
+        return Attempt::ABORT;
     }
 
-    int httpCode = http.GET();
-
-    if (httpCode != HTTP_CODE_OK) {
-        publishStatus(OtaStatus::ERR_HTTP);
-        http.end();
-        _state = OtaState::FAILED;
-        return false;
-    }
-
-    int contentLength = http.getSize();
-
-    if (contentLength <= 0) {
-        publishStatus(OtaStatus::ERR_HTTP);
-        http.end();
-        _state = OtaState::FAILED;
-        return false;
-    }
-
-    if (!Update.begin(contentLength)) {
-        publishStatus(OtaStatus::ERR_NO_SPACE);
-        http.end();
-        _state = OtaState::FAILED;
-        return false;
-    }
-
-    _state = OtaState::UPDATING;
-    publishStatus(OtaStatus::INSTALLING);
-
-    WiFiClient *stream     = http.getStreamPtr();
-    uint8_t     buff[BUFFER_SIZE];
-    size_t      written    = 0;
-    uint32_t    lastDataMs = millis();
-
-    while (written < (size_t)contentLength) {
-        size_t available = stream->available();
-
-        if (available > 0) {
-            lastDataMs = millis();
-
-            size_t toRead = (available < sizeof(buff)) ? available : sizeof(buff);
-            int readBytes = stream->readBytes(buff, toRead);
-
-            if (readBytes <= 0 || Update.write(buff, readBytes) != (size_t)readBytes) {
-                publishStatus(OtaStatus::ERR_WRITE);
-                Update.end();
-                http.end();
-                _state = OtaState::FAILED;
-                return false;
-            }
-
-            written += readBytes;
-            reportProgress(written, contentLength);
-        } else {
-            if (millis() - lastDataMs > (uint32_t)_timeoutMs) {
-                publishStatus(OtaStatus::ERR_TIMEOUT);
-                Update.end();
-                http.end();
-                _state = OtaState::FAILED;
-                return false;
-            }
-            delay(1);
-            yield(); // Prevent ESP8266 watchdog reset
+    uint32_t now = systemEpoch();
+    if (now < MIN_VALID_EPOCH) {
+        now = fetchServerTime(url);
+        if (now < MIN_VALID_EPOCH) {
+            publishStatus(OtaStatus::ERR_NO_TIME);
+            return Attempt::RETRY;
         }
     }
 
-    http.end();
+    client.setTrustAnchors(_trustAnchors);
+    client.setX509Time((time_t)now);
+    return Attempt::OK;
+}
 
-    if (!Update.end(true) || !Update.isFinished()) {
-        publishStatus(OtaStatus::ERR_FINALIZE);
-        _state = OtaState::FAILED;
-        return false;
-    }
+bool ESP8266OtaPlatform::finalizeUpdate() {
+    // Only called once the full Content-Length has been written.
+    return Update.end(true);
+}
 
-    _state = OtaState::SUCCESS;
-    return true;
+void ESP8266OtaPlatform::restartDevice() {
+    delay(500);
+    WiFi.disconnect(true);
+    delay(200);
+    ESP.restart();
+    delay(2000);
+    ESP.reset();
 }
 
 #endif // ESP8266

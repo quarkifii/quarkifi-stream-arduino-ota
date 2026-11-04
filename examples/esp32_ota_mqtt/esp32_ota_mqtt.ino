@@ -46,12 +46,14 @@
 //   RESTARTING  (4)  — Device is about to restart
 //   ERR_BUSY    (10) — OTA already in progress; request ignored
 //   ERR_NO_WIFI (11) — Wi-Fi not connected
-//   ERR_HTTP    (12) — HTTP request failed (non-200 response)
+//   ERR_HTTP    (12) — HTTP/TLS request failed or connection lost
 //   ERR_NO_SPACE(13) — Not enough flash space
 //   ERR_WRITE   (14) — Flash write error
 //   ERR_TIMEOUT (15) — No data received within timeout window
-//   ERR_FINALIZE(16) — Update.end() failed
+//   ERR_FINALIZE(16) — Verify/commit failed (incl. MD5 mismatch)
 //   ERR_RETRIES (17) — All retry attempts exhausted
+//   ERR_NO_TIME (18) — ESP8266 + root CA: no clock and no server Date header
+//   ERR_BAD_ARGS(19) — Invalid URL/MD5/root CA, or http:// with a root CA set
 // ============================================================
 
 #include <WiFi.h>
@@ -118,6 +120,8 @@ void onOtaStatus(const byte status, const byte progress) {
 // Call this instead of ota.startOTA() directly.
 void startOta(const String& url, const String& user, const String& pass) {
     ota.setCallback(onOtaStatus);
+    // Recommended: verify the OTA server. Define OTA_ROOT_CA as a PEM string.
+    // ota.setRootCA(OTA_ROOT_CA);
     String auth = ota.buildAuth(user, pass);
     ota.startOTA(url, auth);
 }
@@ -190,13 +194,14 @@ void setup() {
     Serial.begin(115200);
 
     connectWiFi();
-    if(MQTT_PORT == 1883) {
-        mqttClient =  new PubSubClient(espClient);
-    }else if (MQTT_PORT == 8883) {
+    if (MQTT_PORT == 8883) {
         // If needed to avoid below setInsecure, replace this with latest CA root chain of mqtt host
         // setInsecure uses secured TLS transport but can allow man in the middle attack
         espClientSecure.setInsecure();
         mqttClient =  new PubSubClient(espClientSecure);
+    } else {
+        // 1883 or any other non-TLS port
+        mqttClient =  new PubSubClient(espClient);
     }
     
     // Initialize MQTT

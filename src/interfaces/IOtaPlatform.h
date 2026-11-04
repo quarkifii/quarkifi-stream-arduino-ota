@@ -39,7 +39,12 @@ public:
     //              status == OtaStatus::DOWNLOADING; 0 otherwise)
     virtual void setCallback(void (*callback)(const byte status, const byte progress)) = 0;
 
-    // Trigger an OTA update from the given URL with optional Basic Auth header.
-    // Returns false immediately if OTA cannot be started.
-    virtual bool startOTA(const String &url, const String &auth) = 0;
+    // Trust anchor (PEM root CA certificate) used to verify the HTTPS server.
+    // Empty/nullptr = do not verify (insecure, legacy behaviour).
+    virtual void setRootCA(const char *rootCaPem) = 0;
+
+    // Trigger an OTA update from the given URL with optional Basic Auth header
+    // and optional expected MD5 (32 hex chars) of the firmware image.
+    // Blocks until the update fails; on success the device restarts.
+    virtual bool startOTA(const String &url, const String &auth, const String &md5) = 0;
 };

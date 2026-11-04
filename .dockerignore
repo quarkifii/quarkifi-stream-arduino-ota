@@ -1,0 +1,5 @@
+# Only src/ and test/ are needed for the test image.
+*
+!src/
+!test/
+test/build/

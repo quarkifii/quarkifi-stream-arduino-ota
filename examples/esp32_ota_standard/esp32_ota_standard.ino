@@ -37,12 +37,14 @@
 //   RESTARTING  (4)  — Device is about to restart
 //   ERR_BUSY    (10) — OTA already in progress; request ignored
 //   ERR_NO_WIFI (11) — Wi-Fi not connected
-//   ERR_HTTP    (12) — HTTP request failed (non-200 response)
+//   ERR_HTTP    (12) — HTTP/TLS request failed or connection lost
 //   ERR_NO_SPACE(13) — Not enough flash space
 //   ERR_WRITE   (14) — Flash write error
 //   ERR_TIMEOUT (15) — No data received within timeout window
-//   ERR_FINALIZE(16) — Update.end() failed
+//   ERR_FINALIZE(16) — Verify/commit failed (incl. MD5 mismatch)
 //   ERR_RETRIES (17) — All retry attempts exhausted
+//   ERR_NO_TIME (18) — ESP8266 + root CA: no clock and no server Date header
+//   ERR_BAD_ARGS(19) — Invalid URL/MD5/root CA, or http:// with a root CA set
 // ============================================================
 
 #include <Arduino.h>
@@ -57,6 +59,18 @@ const char* WIFI_PASS     = "YOUR_PASSWORD";
 const char* OTA_URL       = "https://example.com/firmware.bin";
 const char* OTA_USER      = "OTA_USERNAME";   // leave blank if no auth
 const char* OTA_PASSWORD  = "OTA_PASSWORD";   // leave blank if no auth
+const char* OTA_MD5       = "";               // optional: expected firmware MD5 (32 hex chars)
+
+// Optional but recommended: root CA of the OTA server (PEM). When set, the
+// server certificate and hostname are verified and http:// URLs are refused.
+// Leave empty ("") to skip verification (insecure — open to MITM).
+// No NTP/clock sync is required.
+const char* OTA_ROOT_CA   = "";
+// const char* OTA_ROOT_CA = R"EOF(
+// -----BEGIN CERTIFICATE-----
+// ... your server's root CA ...
+// -----END CERTIFICATE-----
+// )EOF";
 
 // ================== GLOBALS ==================
 QuarkifiStreamArduinoOTA ota;
@@ -117,6 +131,12 @@ void onOtaStatus(const byte status, const byte progress) {
         case OtaStatus::ERR_RETRIES:
             Serial.println("[OTA] Error: all retries exhausted");
             break;
+        case OtaStatus::ERR_NO_TIME:
+            Serial.println("[OTA] Error: could not determine time for certificate check");
+            break;
+        case OtaStatus::ERR_BAD_ARGS:
+            Serial.println("[OTA] Error: invalid URL, MD5 or root CA");
+            break;
         default:
             Serial.print("[OTA] Unknown status: ");
             Serial.println(status);
@@ -165,8 +185,10 @@ void loop() {
         // OTA_USER -> URL http basic auth username
         // OTA_PASSWORD -> URL http basic auth password
 
+        ota.setRootCA(OTA_ROOT_CA);
         String auth   = ota.buildAuth(OTA_USER, OTA_PASSWORD);
-        bool   result = ota.startOTA(OTA_URL, auth);
+        // Blocks until done; on success the device restarts.
+        bool   result = ota.startOTA(OTA_URL, auth, OTA_MD5);
 
         if (!result) {
             Serial.println("OTA failed to start.");

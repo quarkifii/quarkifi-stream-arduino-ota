@@ -24,27 +24,24 @@
 
 #if defined(ESP32)
 
-#include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <HTTPClient.h>
-#include <Update.h>
 #include "../common/CommonOtaPlatform.h"
 
 // ================== ESP32OtaPlatform ==================
 // ESP32 concrete OTA implementation.
-// Uses: WiFiClient, WiFiClientSecure, HTTPClient, Update
+// TLS: mbedTLS via WiFiClientSecure. With a root CA set, the server chain and
+// hostname are verified. Certificate dates are not checked by the default
+// Arduino-ESP32 mbedTLS build, so no clock is needed.
 // ======================================================
 
 class ESP32OtaPlatform : public CommonOtaPlatform {
 public:
-    ESP32OtaPlatform();
+    ESP32OtaPlatform() {}
     ~ESP32OtaPlatform() {}
 
-    bool startOTA(const String &url, const String &auth) override;
-
-private:
-    // Execute one OTA attempt. Returns true on success.
-    bool performOTA(const String &url, const String &auth);
+protected:
+    Attempt configureTls(WiFiClientSecure &client, const String &url) override;
+    bool    finalizeUpdate() override;
+    void    restartDevice() override;
 };
 
 #endif // ESP32
